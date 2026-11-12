@@ -13,3 +13,20 @@ This tree starts from iOS commit `361180b` and only adds Mac Catalyst support. O
 | `README.md`, `README.zh-CN.md` | macOS download and Gatekeeper notes. |
 
 No App Sandbox and no hardened runtime. The workflow signs the `.app` ad-hoc (`codesign -s -`) after the build; `CODE_SIGNING_REQUIRED=NO` alone is not enough to launch on Apple Silicon.
+
+## v1.1 — LAN discovery fallback
+
+Same networking changes as the iOS `lan-fix` branch:
+
+- Listener binds TCP port 47823 (random fallback if busy).
+- `includePeerToPeer = true` on listener, browser, and connections.
+- Settings and a Connect-by-IP sheet show this Mac's IPv4 addresses
+  (including `bridge100` when Internet Sharing is on) and the listening port.
+- Type the other device's IP and port to connect when Bonjour cannot see it
+  (typical when a TrollStore iPhone is on a Mac Internet Sharing network).
+- Discovery status reports "Local network permission denied" if Network.framework
+  returns PolicyDenied / NoAuth.
+
+The app is still ad-hoc signed and not sandboxed; no extra network entitlements
+are required on macOS. Allow Local Network and incoming connections in System
+Settings if prompted, and allow local network when first launched.

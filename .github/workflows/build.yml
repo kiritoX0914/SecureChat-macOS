@@ -14,7 +14,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15-intel, macos-15]
+        # arm64 macos-15 stayed queued; intel pool is the only reliable runner
+        os: [macos-15-intel]
 
     steps:
       - name: Checkout repository
@@ -135,9 +136,9 @@ jobs:
           echo "$SMOKE" > smoke-test-result.txt
 
           mkdir -p dist
-          ditto -c -k --keepParent "$APP" dist/SecureChat-macOS.zip
-          ls -lh dist/SecureChat-macOS.zip
-          shasum -a 256 dist/SecureChat-macOS.zip | tee dist/SHA256SUMS
+          ditto -c -k --keepParent "$APP" dist/SecureChat-macOS-v1.1.zip
+          ls -lh dist/SecureChat-macOS-v1.1.zip
+          shasum -a 256 dist/SecureChat-macOS-v1.1.zip | tee dist/SHA256SUMS
           cp smoke-test-result.txt dist/
 
       - name: Upload SecureChat macOS zip
@@ -145,7 +146,7 @@ jobs:
         with:
           name: SecureChat-macOS-${{ matrix.os }}
           path: |
-            dist/SecureChat-macOS.zip
+            dist/SecureChat-macOS-v1.1.zip
             dist/SHA256SUMS
             dist/smoke-test-result.txt
           retention-days: 14

@@ -38,3 +38,16 @@ ditto -c -k --keepParent SecureChat.app SecureChat-macOS.zip
 ```
 
 See `MACOS_CHANGES.md` for the source edits relative to the iOS tree.
+
+
+## Connect by IP (v1.1)
+
+If automatic discovery fails — for example when this Mac is sharing Ethernet
+to an iPhone installed via TrollStore — open **Settings** or **Connect by IP**
+(link icon). This Mac’s IPv4 addresses and listening port (default **47823**)
+are listed there. Type the other device’s address and port and tap Connect.
+The peer appears in the chat list after the hello handshake.
+
+Internet Sharing: use this Mac’s `bridge100` address when connecting from the
+phone, and the iPhone’s address on the shared network when connecting from the
+Mac.
