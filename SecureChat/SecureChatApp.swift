@@ -24,7 +24,12 @@ struct SecureChatApp: App {
 
         // Load or default display name
         let displayName = persistence.loadDisplayName() ?? {
-            #if canImport(UIKit)
+            #if targetEnvironment(macCatalyst)
+            // UIDevice.current.name is a generic "iPad" on Catalyst
+            let host = ProcessInfo.processInfo.hostName
+            let short = host.hasSuffix(".local") ? String(host.dropLast(6)) : host
+            return short.replacingOccurrences(of: "-", with: " ")
+            #elseif canImport(UIKit)
             return UIDevice.current.name
             #else
             return "User"
@@ -42,6 +47,12 @@ struct SecureChatApp: App {
         WindowGroup {
             ChatListView()
                 .environmentObject(chatManager)
+                #if targetEnvironment(macCatalyst)
+                .frame(minWidth: 800, minHeight: 560)
+                #endif
         }
+        #if targetEnvironment(macCatalyst)
+        .defaultSize(width: 960, height: 640)
+        #endif
     }
 }

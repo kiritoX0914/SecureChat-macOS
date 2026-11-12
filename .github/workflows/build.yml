@@ -1,65 +1,151 @@
-name: Build SecureChat iOS
+name: Build SecureChat macOS
 
 on:
   push:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-  workflow_dispatch: # 允许在 GitHub 网页上手动点击运行
+  workflow_dispatch:
 
 jobs:
   build:
-    name: Build & Package iOS App
-    runs-on: macos-15-intel # arm64 macos-15/macos-latest stayed queued; intel pool acquired a runner
+    name: Build Mac Catalyst (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15-intel, macos-15]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Show Xcode Version
+      - name: Show toolchain
         run: |
+          uname -m
+          sw_vers
           xcodebuild -version
           xcrun swift -version
 
-      # 步骤 1: 编译测试（模拟器环境，验证代码可编译性）
-      - name: Build for iOS Simulator (Debug)
+      - name: Build Mac Catalyst (Release, universal)
         run: |
+          set -euo pipefail
           xcodebuild build \
             -project SecureChat.xcodeproj \
             -scheme SecureChat \
-            -destination "generic/platform=iOS Simulator" \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=""
-
-      # 步骤 2: 构建真机 Archive（Release 架构，免证书编译）
-      - name: Build iOS Archive (Release)
-        run: |
-          xcodebuild archive \
-            -project SecureChat.xcodeproj \
-            -scheme SecureChat \
-            -destination "generic/platform=iOS" \
-            -archivePath "build/SecureChat.xcarchive" \
+            -destination 'generic/platform=macOS,variant=Mac Catalyst' \
             -configuration Release \
-            CODE_SIGNING_ALLOWED=NO \
+            -derivedDataPath build/DerivedData \
+            ARCHS="arm64 x86_64" \
+            ONLY_ACTIVE_ARCH=NO \
+            SUPPORTS_MACCATALYST=YES \
+            SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD=NO \
+            MACOSX_DEPLOYMENT_TARGET=13.0 \
+            CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=""
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM=""
 
-      # 步骤 3: 提取 .app 并打包为未签名的 .ipa 安装包
-      # 可直接通过 TrollStore 安装，或用 Sideloadly / AltStore / 爱思助手 进行自签安装
-      - name: Package Unsigned IPA
+      - name: Ad-hoc sign, verify, zip
+        id: package
         run: |
-          mkdir -p build/Payload
-          cp -r "build/SecureChat.xcarchive/Products/Applications/SecureChat.app" build/Payload/
-          cd build
-          zip -qr "SecureChat-unsigned.ipa" Payload
-          ls -lh SecureChat-unsigned.ipa
+          set -euo pipefail
 
-      # 步骤 4: 上传 IPA 安装包为 GitHub Artifacts 供下载
-      - name: Upload Unsigned IPA Artifact
+          APP=$(find build/DerivedData/Build/Products -name 'SecureChat.app' -type d | head -n 1)
+          if [ -z "$APP" ]; then
+            echo "SecureChat.app not found"
+            find build/DerivedData/Build/Products -maxdepth 4 -print || true
+            exit 1
+          fi
+          echo "Found app at: $APP"
+
+          if [ -x "$APP/Contents/MacOS/SecureChat" ]; then
+            BIN="$APP/Contents/MacOS/SecureChat"
+            PLIST="$APP/Contents/Info.plist"
+          elif [ -x "$APP/SecureChat" ]; then
+            BIN="$APP/SecureChat"
+            PLIST="$APP/Info.plist"
+          else
+            echo "Could not locate executable inside the app bundle"
+            find "$APP" -maxdepth 4 -print
+            exit 1
+          fi
+          echo "Binary: $BIN"
+          echo "Plist:  $PLIST"
+
+          # Mac apps must not declare LSRequiresIPhoneOS
+          /usr/libexec/PlistBuddy -c "Delete :LSRequiresIPhoneOS" "$PLIST" 2>/dev/null || true
+          if ! /usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$PLIST" >/dev/null 2>&1; then
+            /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 13.0" "$PLIST"
+          fi
+          if ! /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$PLIST" >/dev/null 2>&1; then
+            /usr/libexec/PlistBuddy -c "Add :CFBundleExecutable string SecureChat" "$PLIST"
+          fi
+
+          # Ad-hoc sign is required to launch on Apple Silicon
+          codesign --force --deep --sign - "$APP"
+
+          echo "===== lipo ====="
+          lipo -info "$BIN"
+          LIPO=$(lipo -info "$BIN")
+          echo "$LIPO" | grep -q arm64
+          echo "$LIPO" | grep -q x86_64
+
+          echo "===== codesign ====="
+          codesign -dv --verbose=2 "$APP"
+
+          echo "===== Info.plist ====="
+          plutil -p "$PLIST"
+          EXEC=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$PLIST")
+          MIN=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$PLIST")
+          echo "CFBundleExecutable=$EXEC"
+          echo "LSMinimumSystemVersion=$MIN"
+          test -n "$EXEC"
+          # Numeric compare: 13.0 must be <= 15.0
+          python3 - << PY
+          minv = "$MIN"
+          parts = [int(x) for x in minv.split(".")]
+          # Compare as (major, minor, patch) against 15.0
+          while len(parts) < 3:
+              parts.append(0)
+          assert tuple(parts) <= (15, 0, 0), minv
+          print("LSMinimumSystemVersion OK:", minv)
+          PY
+
+          # Smoke test: launch briefly on the runner
+          echo "===== smoke test ====="
+          SMOKE=fail
+          open "$APP" || true
+          for i in 1 2 3 4 5 6 7 8; do
+            sleep 1
+            if pgrep -x SecureChat >/dev/null 2>&1 || pgrep -lf SecureChat.app >/dev/null 2>&1; then
+              echo "SecureChat process is running"
+              pgrep -lf SecureChat || true
+              SMOKE=ok
+              break
+            fi
+          done
+          if [ "$SMOKE" != ok ]; then
+            echo "WARNING: app did not stay running (may be a headless-runner limitation)"
+            log show --style syslog --last 30s --predicate 'process == "SecureChat" OR eventMessage CONTAINS "SecureChat"' 2>/dev/null | tail -n 50 || true
+          fi
+          killall SecureChat 2>/dev/null || true
+          sleep 1
+          echo "smoke_test=$SMOKE" >> "$GITHUB_OUTPUT"
+          echo "$SMOKE" > smoke-test-result.txt
+
+          mkdir -p dist
+          ditto -c -k --keepParent "$APP" dist/SecureChat-macOS.zip
+          ls -lh dist/SecureChat-macOS.zip
+          shasum -a 256 dist/SecureChat-macOS.zip | tee dist/SHA256SUMS
+          cp smoke-test-result.txt dist/
+
+      - name: Upload SecureChat macOS zip
         uses: actions/upload-artifact@v4
         with:
-          name: SecureChat-unsigned-ipa
-          path: build/SecureChat-unsigned.ipa
+          name: SecureChat-macOS-${{ matrix.os }}
+          path: |
+            dist/SecureChat-macOS.zip
+            dist/SHA256SUMS
+            dist/smoke-test-result.txt
           retention-days: 14
