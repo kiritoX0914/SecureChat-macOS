@@ -51,8 +51,5 @@ struct SecureChatApp: App {
                 .frame(minWidth: 800, minHeight: 560)
                 #endif
         }
-        #if targetEnvironment(macCatalyst)
-        .defaultSize(width: 960, height: 640)
-        #endif
     }
 }
