@@ -136,9 +136,9 @@ jobs:
           echo "$SMOKE" > smoke-test-result.txt
 
           mkdir -p dist
-          ditto -c -k --keepParent "$APP" dist/SecureChat-macOS-v1.2.zip
-          ls -lh dist/SecureChat-macOS-v1.2.zip
-          shasum -a 256 dist/SecureChat-macOS-v1.2.zip | tee dist/SHA256SUMS
+          ditto -c -k --keepParent "$APP" dist/SecureChat-macOS-v1.3.zip
+          ls -lh dist/SecureChat-macOS-v1.3.zip
+          shasum -a 256 dist/SecureChat-macOS-v1.3.zip | tee dist/SHA256SUMS
           cp smoke-test-result.txt dist/
 
       - name: Upload SecureChat macOS zip
@@ -146,7 +146,7 @@ jobs:
         with:
           name: SecureChat-macOS-${{ matrix.os }}
           path: |
-            dist/SecureChat-macOS-v1.2.zip
+            dist/SecureChat-macOS-v1.3.zip
             dist/SHA256SUMS
             dist/smoke-test-result.txt
           retention-days: 14
