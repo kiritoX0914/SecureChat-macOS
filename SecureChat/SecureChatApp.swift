@@ -8,6 +8,7 @@ import UIKit
 @main
 struct SecureChatApp: App {
     @StateObject private var chatManager: ChatManager
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         let persistence = PersistenceManager()
@@ -50,6 +51,16 @@ struct SecureChatApp: App {
                 #if targetEnvironment(macCatalyst)
                 .frame(minWidth: 800, minHeight: 560)
                 #endif
+        }
+        .onChange(of: scenePhase) { phase in
+            switch phase {
+            case .active:
+                chatManager.appDidBecomeActive()
+            case .background:
+                chatManager.appDidEnterBackground()
+            default:
+                break
+            }
         }
     }
 }
